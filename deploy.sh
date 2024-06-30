@@ -1,34 +1,37 @@
 #!/bin/bash
 
+# Activate virtual environment
+source "venv/bin/activate"
+
+# Update the requirements.txt file in the aethra-backend directory
+echo "Updating requirements.txt in aethra-backend directory..."
+(
+  cd "aethra-backend" || exit
+  pip freeze > "requirements.txt"
+)
+
 # Ensure the necessary directories exist
-mkdir -p aethra-frontend/config/ssl
-mkdir -p aethra-frontend/config/nginx
+mkdir -p "aethra-frontend/config/nginx"
+mkdir -p "aethra-frontend/config/ssl-nginx"
 
-# Temporarily adjust permissions to read the SSL files
-chmod 644 /etc/letsencrypt/live/kairos.gr/fullchain.pem
-chmod 644 /etc/letsencrypt/live/kairos.gr/privkey.pem
-
-# Copy the SSL certificates
-cp /etc/letsencrypt/live/kairos.gr/fullchain.pem aethra-frontend/config/ssl/fullchain.pem
-cp /etc/letsencrypt/live/kairos.gr/privkey.pem aethra-frontend/config/ssl/privkey.pem
-
-echo "SSL certificates have been copied to config/ssl"
-
-# Verify nginx.conf exists
-if [ ! -f aethra-frontend/config/nginx/nginx.conf ]; then
-    echo "config/nginx/nginx.conf not found. Exiting."
-    exit 1
-fi
-
-echo "nginx.conf found. Proceeding with Docker build..."
+echo "nginx.conf files found. Proceeding with Docker build..."
 
 # Stop and remove any existing containers
 docker-compose down
 
-# Build and start the containers
-docker-compose up -d --build
+# Stop any other processes or containers using ports 8000, 443, and 80
+sudo lsof -t -i:8000 -i:443 -i:80 | xargs -r sudo kill -9
 
-# Clean up dangling images
-docker image prune -f
+# Build and start the containers
+docker-compose up -d --build --remove-orphans
+
+# Tag the SSL container to prevent pruning
+docker tag "$(docker images projects-aethra-ssl-nginx -q)" "projects-aethra-ssl-nginx:protected"
+
+# Clean up dangling images, excluding the protected SSL image
+docker image prune -f --filter "label!=protected"
 
 echo "Deployment complete."
+
+# Show running containers
+docker ps

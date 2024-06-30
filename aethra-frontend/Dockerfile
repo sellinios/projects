@@ -1,17 +1,23 @@
-# Use the official Node.js 20.9-alpine image as a base
-FROM node:20.9-alpine AS builder
+# Use an official Node.js runtime as a parent image
+FROM node:20.9-alpine
 
-# Set the working directory to /app
+# Set the working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json to the working directory
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Clear npm cache and install dependencies with --legacy-peer-deps
+# Install dependencies
 RUN npm cache clean --force && npm install --legacy-peer-deps
 
-# Copy the rest of the application to the working directory
+# Copy the rest of the application code
 COPY . .
 
 # Build the application
 RUN npm run build
+
+# Expose the port the app runs on
+EXPOSE 3000
+
+# Define the command to run the application
+CMD ["npm", "start"]
