@@ -1,37 +1,53 @@
 #!/bin/bash
 
-# Activate virtual environment
-source "venv/bin/activate"
+# Define your Docker Hub username and password
+DOCKER_HUB_USERNAME="sellinios"
+DOCKER_HUB_PASSWORD="faidra123!@#"
 
-# Update the requirements.txt file in the aethra-backend directory
-echo "Updating requirements.txt in aethra-backend directory..."
-(
-  cd "aethra-backend" || exit
-  pip freeze > "requirements.txt"
-)
+# Log in to Docker Hub
+echo "Logging in to Docker Hub"
+echo $DOCKER_HUB_PASSWORD | docker login --username $DOCKER_HUB_USERNAME --password-stdin
 
-# Ensure the necessary directories exist
-mkdir -p "aethra-frontend/config/nginx"
-mkdir -p "aethra-frontend/config/ssl-nginx"
+# Build and push backend Docker image
+echo "Building and pushing backend Docker image"
+docker build -t $DOCKER_HUB_USERNAME/backend:latest -f Dockerfile.backend .
+docker push $DOCKER_HUB_USERNAME/backend:latest
 
-echo "nginx.conf files found. Proceeding with Docker build..."
+# Build and push frontend Docker image
+echo "Building and pushing frontend Docker image"
+docker build -t $DOCKER_HUB_USERNAME/frontend:latest -f Dockerfile.frontend .
+docker push $DOCKER_HUB_USERNAME/frontend:latest
 
-# Stop and remove any existing containers
-docker-compose down
+# Ensure the frontend build output is ready
+if [ ! -d "aethra-frontend/build" ]; then
+  echo "Frontend build directory not found!"
+  exit 1
+fi
 
-# Stop any other processes or containers using ports 8000, 443, and 80
-sudo lsof -t -i:8000 -i:443 -i:80 | xargs -r sudo kill -9
+# Build and push Nginx Docker image
+echo "Building and pushing Nginx Docker image"
+docker build -t $DOCKER_HUB_USERNAME/nginx:latest -f Dockerfile.nginx .
+docker push $DOCKER_HUB_USERNAME/nginx:latest
 
-# Build and start the containers
-docker-compose up -d --build --remove-orphans
+# Ensure Minikube is running without root
+echo "Starting Minikube"
+minikube start --driver=docker
 
-# Tag the SSL container to prevent pruning
-docker tag "$(docker images projects-aethra-ssl-nginx -q)" "projects-aethra-ssl-nginx:protected"
+# Enable the NGINX Ingress controller
+echo "Enabling NGINX Ingress controller"
+minikube addons enable ingress
 
-# Clean up dangling images, excluding the protected SSL image
-docker image prune -f --filter "label!=protected"
+# Set the Minikube context
+kubectl config use-context minikube
 
-echo "Deployment complete."
+# Apply Kubernetes manifests
+echo "Applying Kubernetes manifests"
+kubectl apply -f k8s/backend/backend-deployment.yaml
+kubectl apply -f k8s/backend/backend-service.yaml
+kubectl apply -f k8s/frontend/frontend-deployment.yaml
+kubectl apply -f k8s/frontend/frontend-service.yaml
+kubectl apply -f k8s/nginx/nginx-deployment.yaml
+kubectl apply -f k8s/nginx/nginx-service.yaml
+kubectl apply -f k8s/ingress/ingress.yaml
 
-# Show running containers
-docker ps
+echo "Deployment complete"
